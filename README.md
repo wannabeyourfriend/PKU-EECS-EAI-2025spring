@@ -1,8 +1,8 @@
-> 写在前面的话：笔者最近听了一些访谈，觉得很有意思故写下来
+> 写在前面的话：笔者最近听了一个苏昊教授的访谈，觉得很有启发、很有意思因此记录下来
 >
-> Alex
+> Notes Taking: Alex
 >
-> `wang-zx23@mails.tsinghua.edu.cn`
+> Email: `wang-zx23@mails.tsinghua.edu.cn`
 
 [TOC]
 
@@ -15,10 +15,6 @@
 ## 苏昊教授简介
 
 苏昊教授，加州大学圣地亚哥分校（UCSD）计算机科学副教授，Hillbot智能机器人初创公司联合创始人兼首席技术官（CTO）。他的研究工作集中在开发算法来模拟、理解并与物理世界互动。苏昊教授参与了一系列AI数据集和软件工作，从ImageNet到ShapeNet、PointNet、SAPIEN，以及最近的ManiSkill等，这些工作对三维视觉、机器人操作等领域产生了深远影响。
-
-![](https://cseweb.ucsd.edu/~haosu/asset/images/head_new.jpg)
-
-
 
 ## 具身智能简介
 
