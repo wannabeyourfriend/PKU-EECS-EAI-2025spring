@@ -1,4 +1,6 @@
-# Embodied Intelligence Introduction
+# Intro2EAI
+
+- 具身人工智能导论课，由笔者在PKU旁听时的笔记整理而成，课程主页在[这里](https://pku-epic.github.io/Intro2EAI_2025/)
 
 > Notes taking: 王子轩
 >
@@ -10,7 +12,7 @@
 
 ## Kinematics 
 
-### **Rigid Transformation ** 
+### Rigid Transformation  
 
 >Describing the motion of bodies (positionand velocity). Kinematics does not consider how to achieve motion via force.
 
@@ -18,7 +20,7 @@ DoF: degree of freedom自由度
 
 >使用$(R_{s \rightarrow b}, \mathbf{t}_{s \rightarrow b})$二元组来描述**Rigid Transformation**
 
-![](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224155811798.png)
+![](assets/image-20250224155811798.png)
 
 如上图所示，我们使用$\mathcal{F}_{s}$来表示坐标，如图有
 $$
@@ -59,7 +61,7 @@ $$
 T^2_{2 \rightarrow 1} = (T^1_{1 \rightarrow 2})^{-1}
 $$
 
-### **多关节刚体几何学 Multi-Link Rigid-Body Geometry **
+### Multi-Link Rigid-Body Geometry 
 
 > Terms: 
 >
@@ -67,9 +69,9 @@ $$
 >
 > **Joints** are the connectors between links. They determine the DoF of motion between adjacent links
 >
-> | base                                                         | link1                                                        | link2                                                        | end_effectror                                                |
-> | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
-> | ![Image 1](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224163254971.png) | ![Image 2](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224163156899.png) | ![Image 3](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224163202993.png) | ![image-20250224163208029](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224163208029.png) |
+> | base                                           | link1                                          | link2                                          | end_effectror                                                |
+> | ---------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+> | ![Image 1](assets/image-20250224163254971.png) | ![Image 2](assets/image-20250224163156899.png) | ![Image 3](assets/image-20250224163202993.png) | ![image-20250224163208029](assets/image-20250224163208029.png) |
 
 $$
 
@@ -81,9 +83,9 @@ $$
 
 
 
-![image-20250224163348606](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250224163348606.png)
+![image-20250224163348606](E:\project\EAI\Notes\assets\image-20250224163348606.png)
 
-### **Kinematics: 2 end2effector methods**
+### Kinematics: 2 end2effector methods
 
 - **Joint Space (Configuration Space)**
 
@@ -176,11 +178,11 @@ $$
 
 **Roll-Yaw-Pitch** representation 旋转不具备交换性，顺序影响最终结果；万向界死锁现象：
 
-![image-20250303153930366](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250303153930366.png)
+![image-20250303153930366](assets/image-20250303153930366.png)
 
 - 另外一种方向的表征
 
-  ![image-20250303154125132](C:\Users\35551\AppData\Roaming\Typora\typora-user-images\image-20250303154125132.png)
+  ![image-20250303154125132](assets/image-20250303154125132.png)
 
 存储一个$[w, \theta]$
 
@@ -219,11 +221,7 @@ On the continuaty of Rotation representation
 
 ## Motion Planning
 
-
-
-
-
-
+## Dynamics
 
 
 
@@ -252,25 +250,11 @@ example：collision modeling of robot
 如何表征link的物理表面：
 
 - 1. 使用mesh跑从q的模拟
-- 2. 采用球真包裹表面，考虑球与球之间的碰撞检测![image-20250317155642977](E:\project\EAI\Notes\assets\image-20250317155642977.png)
+- 2. 采用球真包裹表面，考虑球与球之间的碰撞检测![image-20250317155642977](assets/image-20250317155642977.png)
 
 vision-mesh和collision-mesh的区分，（凸分解）
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-### Grasping
+## Grasping
 
 #### Definition: 
 
@@ -324,7 +308,7 @@ GraspVLA
 
 When the camera's intrinsic parameters are known, in the absence of symmetry, a single RGB can fully and uniquely predict the 6D pose of an object.
 
-![image-20250317155609453](E:\project\EAI\Notes\assets\image-20250317155609453.png)
+![image-20250317155609453](assets/image-20250317155609453.png)
 
 
 
@@ -334,3 +318,32 @@ When the camera's intrinsic parameters are known, in the absence of symmetry, a 
 
 #### Rotation Regression
 
+使用神经网络来预测旋转
+
+Euler Angles – Discontinuty
+
+卷积神经网络：旋转角度监督信号的discontinuty
+
+![image-20250317161944155](assets/image-20250317161944155.png)
+
+神经网络优化的困难性：将优化目标浪费在了0和2\Pi上的跳变
+
+
+
+
+
+如何建模物体模型（known objects）
+
+3D-3D correspondence 唯一解
+
+物体大小可以变 2D-3D correspondence 不唯一
+
+ 
+
+![image-20250317172430950](assets/image-20250317172430950.png)
+
+监督信号直接利用
+
+### Orthogonal Procrustes Problem
+
+解决如何将一个物体的点集对齐到另一个物体的点集
