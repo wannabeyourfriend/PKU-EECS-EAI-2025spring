@@ -66,7 +66,58 @@ class RobotModel:
             0  1
         where R is rotation matrix and t is translation vector
         """
-        raise NotImplementedError("Implement this function")
+        # 初始化所有连杆的位姿矩阵
+        num_links = len(self.links)
+        poses = np.zeros((num_links, 4, 4))
+        
+        # 设置第一个连杆的位姿为单位矩阵（位于原点，无旋转）
+        poses[0, :, :] = np.eye(4)
+        
+        # 旋转关节计数器（用于索引qpos数组）
+        revolute_joint_idx = 0
+        
+        # 计算每个连杆的位姿
+        for i in range(1, num_links):
+            # 获取当前连杆的父关节（即第i-1个关节）
+            joint = self.joints[i-1]
+            
+            # 获取父连杆的位姿
+            parent_pose = poses[i-1]
+            
+            # 创建关节的变换矩阵
+            joint_transform = np.eye(4)
+            
+            # 设置关节的旋转和平移
+            joint_transform[:3, :3] = joint.rot
+            joint_transform[:3, 3] = joint.trans
+            
+            # 如果是旋转关节，需要应用关节角度
+            if isinstance(joint, RevoluteJoint):
+                # 获取当前关节角度
+                angle = qpos[revolute_joint_idx]
+                revolute_joint_idx += 1
+                
+                # 计算旋转轴的旋转矩阵
+                axis = joint.axis
+                # 创建旋转矩阵（罗德里格斯公式）
+                cos_theta = np.cos(angle)
+                sin_theta = np.sin(angle)
+                K = np.array([
+                    [0, -axis[2], axis[1]],
+                    [axis[2], 0, -axis[0]],
+                    [-axis[1], axis[0], 0]
+                ])
+                R = np.eye(3) + sin_theta * K + (1 - cos_theta) * (K @ K)
+                
+                # 应用关节角度旋转
+                rot_matrix = np.eye(4)
+                rot_matrix[:3, :3] = R
+                joint_transform = joint_transform @ rot_matrix
+            
+            # 计算当前连杆的位姿 = 父连杆位姿 * 关节变换
+            poses[i] = parent_pose @ joint_transform
+            
+        return poses
 
     def load_urdf(self, robot_cfg: RobotConfig):
         """
