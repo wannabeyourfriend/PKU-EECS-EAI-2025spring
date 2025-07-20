@@ -81,7 +81,24 @@ def transform_grasp_pose(
     Grasp
         The transformed grasp in the robot frame.
     """
-    raise NotImplementedError
+    # Step 1: Transform grasp from object frame to camera frame
+    # Apply object pose transformation: T_cam_obj = [est_rot, est_trans; 0, 1]
+    grasp_trans_cam = est_rot @ grasp.trans + est_trans
+    grasp_rot_cam = est_rot @ grasp.rot
+    
+    # Step 2: Transform grasp from camera frame to robot frame
+    # Apply camera pose transformation: T_robot_cam = [cam_rot, cam_trans; 0, 1]
+    grasp_trans_robot = cam_rot @ grasp_trans_cam + cam_trans
+    grasp_rot_robot = cam_rot @ grasp_rot_cam
+    
+    # Create the transformed grasp
+    transformed_grasp = Grasp(
+        trans=grasp_trans_robot,
+        rot=grasp_rot_robot,
+        width=grasp.width  # Width remains unchanged
+    )
+    
+    return transformed_grasp
 
 def get_pc(depth: np.ndarray, intrinsics: np.ndarray) -> np.ndarray:
     """

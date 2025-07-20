@@ -1,6 +1,5 @@
 # Assignment 1
->姓名：王子轩
->邮箱：`wang-zx23@mails.tsinghua.edu.cn`
+>email：`wang-zx23@mails.tsinghua.edu.cn`
 ## My Result
 ```bash
 conda create -n hw1 python=3.10 

@@ -9,7 +9,7 @@ import yaml
 
 @dataclass
 class Config:
-    model_type: str = None
+    model_type: str = "est_pose"
     """can be est_pose or est_coord"""
     exp_name: str = "debug"
     """if exp_name is debug, it won't be logged in wandb"""
@@ -19,19 +19,19 @@ class Config:
     """the object we want to grasp"""
     checkpoint: str = None
     """if not None, then we will continue training from this checkpoint"""
-    max_iter: int = 10000
+    max_iter: int = 5000
     """the maximum number of iterations"""
-    batch_size: int = 16
+    batch_size: int = 8
     """the batch size for training"""
     learning_rate: float = 1e-3
     """maximum (and initial) learning rates"""
     learning_rate_min: float = 1e-8
     """we use cosine decay for learning rate, and this is the minimum (and final) learning rate"""
-    log_interval: int = 100
+    log_interval: int = 10
     """log for each log_interval iterations"""
-    save_interval: int = 2500
+    save_interval: int = 1000
     """save the model every save_interval iterations"""
-    val_interval: int = 500
+    val_interval: int = 10
     """get metric from validation set every val_interval iterations"""
     val_num: int = 10
     """run val_num batches for each validation to get stable result"""
@@ -39,7 +39,7 @@ class Config:
     """how many workers to use for data loading, if you are debugging, use 0 so that it won't create new processes"""
     seed: int = 0
     """the random seed for training"""
-    device: str = "cpu"
+    device: str = "mps"  
     """the device to use for training, you can use cuda:0 if you have a gpu"""
     point_num: int = 1024
     """number of points sampled from the full observation point cloud"""

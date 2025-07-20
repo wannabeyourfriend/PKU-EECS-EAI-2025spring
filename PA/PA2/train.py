@@ -12,8 +12,6 @@ from src.logger import Logger
 from src.utils import set_seed
 from src.data import Loader, PoseDataset
 from src.model import get_model
-
-
 def main():
     # use argparse so that we can override config.yaml in command line
     # the priproity is command_line_args > config_path > default_value
@@ -52,10 +50,16 @@ def main():
     logger = Logger(config)
 
     # set device
-    assert (
-        config.device == "cpu" or torch.cuda.is_available()
-    ), f"CUDA is not available, device={config.device}"
-    device = torch.device(config.device)
+    if config.device == "cpu":
+        device = torch.device("cpu")
+    elif config.device == "mps":
+        assert torch.backends.mps.is_available(), f"MPS is not available on this device"
+        device = torch.device("mps")
+    elif config.device.startswith("cuda"):
+        assert torch.cuda.is_available(), f"CUDA is not available, device={config.device}"
+        device = torch.device(config.device)
+    else:
+        raise ValueError(f"Unsupported device: {config.device}. Supported devices: cpu, mps, cuda:0, cuda:1, etc.")
 
     # loading datasets
     train_dataset = PoseDataset(config, mode="train", scale=100)
@@ -108,6 +112,15 @@ def main():
     model.train()
 
     # start training loop here
+    # 添加设备信息打印
+    print(f"🔧 使用设备: {device}")
+    if device.type == 'mps':
+        print("✅ MPS GPU加速已启用")
+    elif device.type == 'cuda':
+        print(f"✅ CUDA GPU加速已启用: {torch.cuda.get_device_name()}")
+    else:
+        print("⚠️  使用CPU训练，GPU加速未启用")
+    
     for it in trange(cur_iter, config.max_iter):
         optimizer.zero_grad()
         data = train_loader.get()
@@ -146,7 +159,7 @@ def main():
                     result_dicts.append(result_dict)
                 logger.log(
                     {
-                        k: np.array([dic[k].cpu() for dic in result_dicts]).mean()
+                        k: np.array([dic[k].cpu() if torch.is_tensor(dic[k]) else dic[k] for dic in result_dicts]).mean()
                         for k in result_dicts[0].keys()
                     },
                     "val",

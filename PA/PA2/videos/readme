@@ -1,4 +1,2 @@
-
-
 最佳的抓取观察视角，在机器人的右侧可以看到整个抓取的过程
 python mujoco_test_video.py --use_global_camera 1 --camera_distance 2.0 --camera_azimuth 90 --camera_elevation -30 --grasp 1

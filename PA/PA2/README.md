@@ -72,3 +72,65 @@ If you install some packages that are not in the ```Environment``` part, please 
 You will get 1% bonus on the final score if you have any model with success rate >= 92.5%
 
 When the point cloud is noisy, you might not be able to fit well if you simply fit using all object points due to the outliers. We can use RANSAC to solve this problem, and you will get 2% bonus on the final score if you implement RANSAC in Part II using only numpy or torch.
+
+
+
+          
+Let's examine the result files to include them in the documentation.
+        
+            
+toolName: view_folder
+            
+status: success
+          
+/Users/admin/Codebase/PAs/PKU-EECS-EAI-2025spring/PA/PA2/assets/result
+          
+## My Homework
+
+I implemented two different approaches for Pose Estimation:
+
+### Method 1: Direct Pose Estimation (EstPoseNet)
+`est_pose.py`
+- Input: Point cloud (B, N, 3)
+- Network Architecture: PointNet feature extractor + two MLP heads
+- Output:
+  - Translation vector (B, 3)
+  - 6D rotation representation (B, 6) → Rotation matrix (B, 3, 3)
+- Features: End-to-end training, using 6D continuous rotation representation to ensure orthogonality
+
+### Method 2: Coordinate Prediction + Kabsch Algorithm (EstCoordNet)
+`est_coord.py`
+- Input: Point cloud (B, N, 3)
+- Network Architecture: PointNet feature extractor + coordinate prediction head
+- Output: Coordinates of each point in object coordinate system (B, N, 3)
+- Pose Solving: Implementing Kabsch algorithm in `_fit_pose_from_coordinates`
+
+### Training Results
+Training Configuration:
+- Model: EstCoordNet
+- Iterations: 5000
+- Batch size: 8
+- Training time: ~3h on Mac
+
+Performance Metrics:
+- Rotation Error: ~0.51 rad
+- Translation Error: ~0.018 m
+- Success Rate: 425/500 = 0.85
+
+![Training Loss](assets/result/est_coord_loss.png)
+
+### Complete Grasping Pipeline
+The complete grasping pipeline consists of the following steps:
+1. Generate point cloud from depth image
+2. Fit object pose using point cloud
+3. Calculate robot grasping pose based on object pose
+4. Path planning using Mujoco's built-in planner
+
+### Grasping Results
+Here are some visualization results of the grasping pipeline:
+
+![Grasp Example 1](assets/result/grasp1.png)
+![Grasp Example 2](assets/result/grasp2.png)
+
+Grasping Animation:
+![Grasping Animation](assets/result/grasp_galbot_power_drill_global_20250719_123946_run0.gif)
