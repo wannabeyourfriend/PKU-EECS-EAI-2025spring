@@ -22,6 +22,10 @@ LOGGER.setLevel(logging.INFO)
 LOGGER.addHandler(handler)
 
 import jax
+# Force JAX to use CPU backend to avoid Metal compatibility issues with MuJoCo MJX
+jax.config.update('jax_platform_name', 'cpu')
+LOGGER.info(f"Using JAX platform: {jax.default_backend()}")
+
 from jax import numpy as jp
 from ml_collections import config_dict
 import mujoco
@@ -73,10 +77,50 @@ class MyGetupEnv(Getup):
         #   3. joint position (error to default pose)
         #   4. body angular velocity (error to zero)
 
-        rew_term_1 = ...
-        rew_term_2 = ...
+        # 1. Body Height Reward - Exponential reward for reaching desired height
+        body_height = body_pos[2]  # z-coordinate of body position
+        height_error = jp.abs(body_height - DESIRED_BODY_HEIGHT)
+        rew_height = jp.exp(-10.0 * height_error)  # Sharp exponential reward
+        
+        # 2. Body Orientation Reward - Encourage upright posture
+        # gravity_vector in body frame should point downward when upright
+        # When upright, gravity_vector should be close to [0, 0, -1] in body frame
+        gravity_norm = jp.linalg.norm(gravity_vector)
+        gravity_normalized = gravity_vector / (gravity_norm + 1e-8)
+        # Reward for gravity vector pointing downward (negative z in body frame)
+        upright_reward = jp.maximum(0.0, -gravity_normalized[2])  # Clamp to positive
+        rew_orientation = jp.exp(5.0 * (upright_reward - 1.0))  # Exponential scaling
+        
+                # 3. Joint Position Reward - Minimize deviation from default pose
+        joint_pos_error = jp.linalg.norm(joint_qpos - default_qpos)
+        rew_joint_pos = jp.exp(-2.0 * joint_pos_error)
+        
+        # 4. Angular Velocity Penalty - Encourage stability (minimize spinning)
+        ang_vel_penalty = jp.linalg.norm(body_ang_vel)
+        rew_ang_vel = jp.exp(-1.0 * ang_vel_penalty)
+        
+        # 5. Linear Velocity Penalty - Encourage staying in place during getup
+        lin_vel_penalty = jp.linalg.norm(body_lin_vel[:2])  # Only x,y components
+        rew_lin_vel = jp.exp(-0.5 * lin_vel_penalty)
+        
+        # 6. Action Smoothness Reward - Penalize large action changes
+        action_diff = jp.linalg.norm(action - state.info["last_act"])
+        rew_smoothness = jp.exp(-0.1 * action_diff)
+        
+        # 7. Energy Efficiency - Penalize large joint velocities
+        joint_vel_penalty = jp.linalg.norm(joint_qvel)
+        rew_energy = jp.exp(-0.05 * joint_vel_penalty)
+        
+        # Combine rewards with carefully tuned weights based on SOTA practices
+        rew_term_1 = 4.0 * rew_height  # Primary objective: reach target height
+        rew_term_2 = 3.0 * rew_orientation  # Critical: maintain upright orientation
+        rew_term_3 = 1.5 * rew_joint_pos  # Important: stay close to default pose
+        rew_term_4 = 1.0 * rew_ang_vel  # Stability: minimize angular velocity
+        rew_term_5 = 0.5 * rew_lin_vel  # Stability: minimize lateral movement
+        rew_term_6 = 0.3 * rew_smoothness  # Smoothness: encourage smooth actions
+        rew_term_7 = 0.2 * rew_energy  # Efficiency: minimize energy consumption
 
-        reward = rew_term_1 + rew_term_2 + ...
+        reward = rew_term_1 + rew_term_2 + rew_term_3 + rew_term_4 + rew_term_5 + rew_term_6 + rew_term_7
         # TODO: End of your code.
 
         state.info["last_last_act"] = state.info["last_act"]
@@ -159,7 +203,7 @@ def train_ppo():
     from ml_collections import config_dict
 
     ppo_params = config_dict.create(
-        num_timesteps=40_000_000,
+        num_timesteps=40_000_000, 
         num_evals=0,
         reward_scaling=1.0,
         episode_length=500,

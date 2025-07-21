@@ -1,3 +1,11 @@
+torch>=2.0.0
+torchvision
 numpy
 scipy
-playground==0.0.4
+matplotlib
+opencv-python
+gym
+mujoco
+mujoco-py
+imageio
+imageio-ffmpeg

@@ -1,3 +1,5 @@
+import numpy as np
+
 def check_monte_carlo(monte_carlo_advantage):
     import numpy as np
 
@@ -216,3 +218,142 @@ def check_value_loss(value_loss_fn):
         print(f"Expected {sol3}, but got {value_loss3}")
 
     print(f"Value loss total points: {point}/3")
+
+
+# Monte Carlo Advantage
+def monte_carlo_advantage(rewards: np.ndarray, values: np.ndarray, gamma: float):
+    """
+    Monte Carlo advantage estimation.
+
+    Args:
+        rewards (np.ndarray): sequence of rewards with shape (T,).
+        values (np.ndarray): sequence of estimated state values with shape (T+1,).
+        gamma (float): discount factor.
+
+    Returns:
+        advantages: (np.array) Gt - V(s)
+    """
+    T = len(rewards)
+    advantages = np.zeros(T)
+    
+    # 计算每个时间步的累积回报 Gt
+    for t in range(T):
+        Gt = 0
+        for k in range(t, T):
+            Gt += (gamma ** (k - t)) * rewards[k]
+        # 优势函数 = 累积回报 - 状态价值
+        advantages[t] = Gt - values[t]
+    
+    return advantages
+
+def td_residual_advantage(rewards: np.ndarray, values: np.ndarray, gamma: float):
+    """
+    TD(0) residual advantage estimation (one-step TD error).
+
+    Args:
+        rewards: list or np.array of rewards with shape (T,).
+        values: list or np.array of values  with shape (T+1,).
+        gamma: discount factor.
+
+    Returns:
+        advantages: (np.array) δ_t = r_t + γ * V(s_{t+1}) - V(s_t)
+    """
+    T = len(rewards)
+    advantages = np.zeros(T)
+    
+    for t in range(T):
+        advantages[t] = rewards[t] + gamma * values[t + 1] - values[t]
+    
+    return advantages
+
+
+def generalized_advantage_estimation(rewards, values, gamma, lam):
+    """
+    Generalized Advantage Estimation (GAE).
+
+    Args:
+        rewards: list or np.array of rewards.
+        values: list or np.array of values (length = len(rewards) + 1).
+        gamma: discount factor.
+        lam: GAE lambda parameter (between 0 and 1).
+               λ=0: reduces to TD(0) (high bias, low variance).
+               λ=1: reduces to Monte Carlo (low bias, high variance).
+
+    Returns:
+        advantages: (np.array) GAE advantages
+    """
+    T = len(rewards)
+    advantages = np.zeros(T)
+    
+    td_errors = np.zeros(T)
+    for t in range(T):
+        td_errors[t] = rewards[t] + gamma * values[t + 1] - values[t]
+    
+    gae = 0
+    for t in reversed(range(T)):
+        gae = td_errors[t] + gamma * lam * gae
+        advantages[t] = gae
+    
+    return advantages
+
+
+def compute_policy_loss(ratio, adv, dist_entropy, epsilon, entropy_weight):
+    """
+    Compute the policy (actor) loss for PPO using NumPy.
+
+    Args:
+        ratio (np.ndarray): Probability ratios between new and old policies.
+        adv (np.ndarray): Advantage estimates.
+        dist_entropy (float): Precomputed mean entropy of the new policy distribution.
+        epsilon (float): PPO clip range.
+        entropy_weight (float): Entropy bonus weight.
+
+    Returns:
+        float: The computed policy loss (scalar).
+    """
+    # PPO的clipped surrogate objective
+    # L^CLIP = min(r_t * A_t, clip(r_t, 1-ε, 1+ε) * A_t)
+    
+    # 未裁剪的目标
+    unclipped_objective = ratio * adv
+    
+    # 裁剪的目标
+    clipped_ratio = np.clip(ratio, 1 - epsilon, 1 + epsilon)
+    clipped_objective = clipped_ratio * adv
+    
+    # 取两者的最小值
+    policy_objective = np.minimum(unclipped_objective, clipped_objective)
+    
+    # 平均策略目标
+    mean_policy_objective = np.mean(policy_objective)
+    
+    # 添加熵奖励
+    entropy_bonus = entropy_weight * dist_entropy
+    
+    # PPO损失 = -(策略目标 + 熵奖励)
+    policy_loss = -(mean_policy_objective + entropy_bonus)
+    
+    return policy_loss
+
+
+def compute_value_loss(values, returns):
+    """
+    Compute the value loss for PPO using NumPy. The loss should be Mean Squared Error (MSE) between predicted values and target returns.
+
+    Args:
+        values (np.ndarray): Predicted state values.
+        returns (np.ndarray): Target returns.
+
+    Returns:
+        float: The computed value loss (scalar).
+    """
+    # 均方误差损失
+    mse_loss = np.mean((values - returns) ** 2)
+    return mse_loss
+
+# check correctness
+check_monte_carlo(monte_carlo_advantage)
+check_td_residual(td_residual_advantage)
+check_gae(generalized_advantage_estimation)
+check_policy_loss(compute_policy_loss)
+check_value_loss(compute_value_loss)
