@@ -203,7 +203,7 @@ def train_ppo():
     from ml_collections import config_dict
 
     ppo_params = config_dict.create(
-        num_timesteps=40_000_000, 
+        num_timesteps=10_000, 
         num_evals=0,
         reward_scaling=1.0,
         episode_length=500,

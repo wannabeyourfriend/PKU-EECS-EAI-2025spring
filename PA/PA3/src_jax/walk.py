@@ -2,6 +2,8 @@ import os
 
 import matplotlib.pyplot as plt
 
+os.environ['JAX_PLATFORMS'] = 'cpu'
+
 xla_flags = os.environ.get('XLA_FLAGS', '')
 xla_flags += ' --xla_gpu_triton_gemm_any=True'
 os.environ['XLA_FLAGS'] = xla_flags
@@ -88,11 +90,45 @@ class MyWalkEnv(Joystick):
         joint_qvel = data.qvel[7:]
 
         # TODO: your code here. hint: use DESIRED_XY_LIN_VEL and DESIRED_YAW_ANG_VEL as goal
-        DESIRED_XY_LIN_VEL
-        tracking_lin_vel = ...
-
-        DESIRED_YAW_ANG_VEL
-        tracking_ang_vel = ...
+        
+        # === SOTA Reward Design for Quadruped Walking ===
+        
+        # 1. Linear Velocity Tracking (Exponential reward with tolerance)
+        # Based on ANYmal and other SOTA quadruped controllers
+        lin_vel_error = jp.linalg.norm(body_lin_vel[:2] - DESIRED_XY_LIN_VEL)
+        tracking_lin_vel = jp.exp(-2.0 * lin_vel_error**2)  # Gaussian reward with sigma=0.5
+        
+        # 2. Angular Velocity Tracking (Yaw rate tracking)
+        # Focus on yaw angular velocity (z-axis rotation)
+        yaw_vel_error = jp.abs(body_ang_vel[2] - DESIRED_YAW_ANG_VEL)
+        tracking_ang_vel = jp.exp(-1.5 * yaw_vel_error**2)  # Gaussian reward with sigma=0.58
+        
+        # === Additional SOTA Reward Components ===
+        
+        # 3. Forward Progress Reward (encourages forward motion)
+        forward_progress = jp.maximum(0.0, body_lin_vel[0])  # Only reward forward motion
+        
+        # 4. Lateral Stability (penalize excessive lateral motion)
+        lateral_stability = jp.exp(-5.0 * body_lin_vel[1]**2)
+        
+        # 5. Smooth Velocity Changes (penalize abrupt velocity changes)
+        if "last_body_vel" in state.info:
+            vel_smoothness = jp.exp(-0.5 * jp.linalg.norm(body_lin_vel - state.info["last_body_vel"])**2)
+        else:
+            vel_smoothness = 1.0
+        
+        # 6. Energy Efficiency (reward efficient gaits)
+        # Penalize high joint velocities when not necessary
+        joint_vel_penalty = jp.exp(-0.01 * jp.sum(joint_qvel**2))
+        
+        # 7. Gait Regularity (encourage periodic foot contacts)
+        # This promotes natural quadruped gaits
+        contact_symmetry = 1.0 - 0.5 * jp.abs(jp.sum(contact[:2]) - jp.sum(contact[2:]))
+        
+        # 8. Base Stability (minimize roll and pitch)
+        # Extract roll and pitch from gravity vector
+        roll_pitch_error = jp.linalg.norm(gravity_vector[:2])
+        base_stability = jp.exp(-3.0 * roll_pitch_error**2)
 
         # TODO: End of your code.
         info = state.info
@@ -124,24 +160,38 @@ class MyWalkEnv(Joystick):
         )
         rew_dof = self._cost_joint_pos_limits(data.qpos[7:])
 
-        # Bookkeeping.
+        # Bookkeeping - SOTA Reward Composition
         reward = (
-            tracking_lin_vel
-            + 0.5 * tracking_ang_vel
-            + 0.2 * reward_height
-            + -5.0 * reward_orientation
-            + -1.0 * rew_termination
-            + 0.5 * rew_pose
-            + -0.0002 * rew_torques
-            + -0.01 * rew_action_rate
-            + -0.001 * rew_energy
-            + -0.1 * rew_feet_slip
-            + -2.0 * rew_feet_clearance
-            + -0.2 * rew_feet_height
-            + 0.1 * rew_feet_air_time
-            + -1.0 * rew_dof
+            # Primary tracking objectives (highest weights)
+            2.0 * tracking_lin_vel          # Linear velocity tracking
+            + 1.0 * tracking_ang_vel        # Angular velocity tracking
+            
+            # Locomotion quality rewards
+            + 0.5 * forward_progress         # Encourage forward motion
+            + 0.3 * lateral_stability        # Lateral stability
+            + 0.2 * vel_smoothness          # Smooth velocity changes
+            + 0.15 * joint_vel_penalty      # Energy efficiency
+            + 0.1 * contact_symmetry        # Gait regularity
+            + 0.4 * base_stability          # Base stability
+            
+            # Original stability and safety rewards (adjusted weights)
+            + 0.15 * reward_height          # Body height maintenance
+            + -3.0 * reward_orientation     # Orientation penalty (reduced)
+            + -1.0 * rew_termination        # Termination penalty
+            + 0.3 * rew_pose               # Pose reward (reduced)
+            + -0.0001 * rew_torques        # Torque penalty (reduced)
+            + -0.005 * rew_action_rate     # Action rate penalty (reduced)
+            + -0.0005 * rew_energy         # Energy penalty (reduced)
+            + -0.05 * rew_feet_slip        # Feet slip penalty (reduced)
+            + -1.0 * rew_feet_clearance    # Feet clearance penalty (reduced)
+            + -0.1 * rew_feet_height       # Feet height penalty (reduced)
+            + 0.05 * rew_feet_air_time     # Feet air time reward (reduced)
+            + -0.5 * rew_dof               # DOF penalty (reduced)
         )
         reward = jp.clip(reward * self.dt, 0., 10000.0)
+        
+        # Store current velocity for next step
+        state.info["last_body_vel"] = body_lin_vel
         state.info["last_last_act"] = state.info["last_act"]
         state.info["last_act"] = action
 
@@ -201,6 +251,7 @@ class MyWalkEnv(Joystick):
             "steps_since_last_pert": 0,
             "pert_steps": 0,
             "pert_dir": jp.zeros(3),
+            "last_body_vel": jp.zeros(3),  # Initialize last_body_vel to maintain pytree structure
         }
 
         metrics = {}
@@ -309,7 +360,7 @@ def train_ppo():
     from ml_collections import config_dict
 
     ppo_params = config_dict.create(
-        num_timesteps=200_000_000,
+        num_timesteps=100_000_000, #200_000_000,
         num_evals=0,
         reward_scaling=1.0,
         episode_length=500,
@@ -414,7 +465,7 @@ def train_ppo():
         width=640,
         scene_option=scene_option,
     )
-    media.write_video('../experiments/solutions/part3_video.mp4', frames)
+    media.write_video('../experiments/solutions/part3_video_100_000_000.mp4', frames)
     print("video saved to part3.mp4")
 
 if __name__ == '__main__':
