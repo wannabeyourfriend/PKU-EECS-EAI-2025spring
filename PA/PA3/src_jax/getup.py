@@ -125,12 +125,12 @@ class MyGetupEnv(Getup):
         # Improved reward composition following walk.py's SOTA design pattern
         reward = (
             # Primary objectives (highest weights)
-            3.0 * rew_height                    # Primary: reach target height
-            + 2.0 * rew_orientation             # Critical: maintain upright orientation
-            + 1.5 * rew_joint_pos               # Important: stay close to default pose
+            4.0 * rew_height                    # Primary: reach target height
+            + 0.5 * rew_orientation             # Critical: maintain upright orientation
+            + 0.5 * rew_joint_pos               # Important: stay close to default pose
             
             # Stability rewards (medium weights)
-            + 1.0 * rew_ang_vel                 # Stability: minimize angular velocity
+            + 0.5 * rew_ang_vel                 # Stability: minimize angular velocity
             + 0.8 * rew_lin_vel                 # Stability: minimize lateral movement
             + 0.5 * rew_energy                  # Efficiency: minimize energy consumption
             
@@ -412,7 +412,7 @@ def train_ppo(checkpoint_dir='./checkpoints', resume_from_checkpoint=None, save_
     from ml_collections import config_dict
 
     ppo_params = config_dict.create(
-        num_timesteps=1_000_000, 
+        num_timesteps=50_000_000, 
         num_evals=0,
         reward_scaling=1.0,
         episode_length=500,
@@ -557,19 +557,19 @@ def train_ppo(checkpoint_dir='./checkpoints', resume_from_checkpoint=None, save_
         width=640,
         scene_option=scene_option,
     )
-    media.write_video('../experiments/solutions/part2_video.mp4', frames)
+    media.write_video('../experiments/solutions/part2_video_50_000_000.mp4', frames)
     print("video saved to part2.mp4")
 
 if __name__ == '__main__':
     # 示例用法:
     # 1. 从头开始训练并保存checkpoint
-    train_ppo(checkpoint_dir='./getup_checkpoints', save_interval=100_000)
+    # train_ppo(checkpoint_dir='./getup_checkpoints', save_interval=1_000_000)
     
     # 2. 从最新checkpoint恢复训练
     # train_ppo(checkpoint_dir='./getup_checkpoints', resume_from_checkpoint='latest')
     
     # 3. 从特定checkpoint恢复训练
-    # train_ppo(checkpoint_dir='./getup_checkpoints', resume_from_checkpoint='./getup_checkpoints/checkpoint_500000.pkl')
+    train_ppo(checkpoint_dir='./getup_checkpoints', resume_from_checkpoint='./getup_checkpoints/checkpoint_latest.pkl')
     
     # 4. 评估已保存的checkpoint
     # evaluate_from_checkpoint('./getup_checkpoints/checkpoint_latest.pkl')

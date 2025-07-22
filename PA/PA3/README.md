@@ -1,5 +1,6 @@
 # Installation
 
+
 ```shell
 # use conda
 conda create -n hw python=3.10
@@ -152,5 +153,22 @@ Complete all `TODO` sections in `hw_py/part3_getup.py`. Make sure to output `hw_
 - The Height error on `hw_py/part3_LinVel_error.png` should be less than **0.15** to get full points.
 - If your implementation is generally correct, you will still get most of the points even if the error is higher than
   the threshold.
+
+
+## myhomework
+
+failed on **getup task** but succeceed on **walking tasks**
+
+![](part3_LinVel_error.png)
+
+train 400s on **1 mac cpu** demo:
+
+![](part3_video_6_000_000-ezgif.com-video-to-gif-converter.gif)
+
+more on interests
+~ related works of getting up tasks
+https://arxiv.org/html/2502.12152v1
+
+
 
 
