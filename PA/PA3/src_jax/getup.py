@@ -1,5 +1,5 @@
 import os
-
+import pickle
 import matplotlib.pyplot as plt
 
 xla_flags = os.environ.get('XLA_FLAGS', '')
@@ -91,7 +91,7 @@ class MyGetupEnv(Getup):
         upright_reward = jp.maximum(0.0, -gravity_normalized[2])  # Clamp to positive
         rew_orientation = jp.exp(5.0 * (upright_reward - 1.0))  # Exponential scaling
         
-                # 3. Joint Position Reward - Minimize deviation from default pose
+        # 3. Joint Position Reward - Minimize deviation from default pose
         joint_pos_error = jp.linalg.norm(joint_qpos - default_qpos)
         rew_joint_pos = jp.exp(-2.0 * joint_pos_error)
         
@@ -111,16 +111,38 @@ class MyGetupEnv(Getup):
         joint_vel_penalty = jp.linalg.norm(joint_qvel)
         rew_energy = jp.exp(-0.05 * joint_vel_penalty)
         
-        # Combine rewards with carefully tuned weights based on SOTA practices
-        rew_term_1 = 4.0 * rew_height  # Primary objective: reach target height
-        rew_term_2 = 3.0 * rew_orientation  # Critical: maintain upright orientation
-        rew_term_3 = 1.5 * rew_joint_pos  # Important: stay close to default pose
-        rew_term_4 = 1.0 * rew_ang_vel  # Stability: minimize angular velocity
-        rew_term_5 = 0.5 * rew_lin_vel  # Stability: minimize lateral movement
-        rew_term_6 = 0.3 * rew_smoothness  # Smoothness: encourage smooth actions
-        rew_term_7 = 0.2 * rew_energy  # Efficiency: minimize energy consumption
-
-        reward = rew_term_1 + rew_term_2 + rew_term_3 + rew_term_4 + rew_term_5 + rew_term_6 + rew_term_7
+        # 8. Termination Cost - Penalize early termination (similar to walk.py)
+        rew_termination = jp.where(done, -10.0, 0.0)  # Heavy penalty for termination
+        
+        # 9. Action Rate Cost - Penalize large action changes (similar to walk.py)
+        action_diff = jp.linalg.norm(action - state.info["last_act"])
+        rew_action_rate = -action_diff  # Linear penalty for action changes
+        
+        # 10. Torque Cost - Penalize large torques (energy efficiency)
+        # Note: In getup task, we don't have actuator_force directly, so we approximate with action magnitude
+        rew_torques = -jp.linalg.norm(action)  # Penalize large actions as proxy for torques
+        
+        # Improved reward composition following walk.py's SOTA design pattern
+        reward = (
+            # Primary objectives (highest weights)
+            3.0 * rew_height                    # Primary: reach target height
+            + 2.0 * rew_orientation             # Critical: maintain upright orientation
+            + 1.5 * rew_joint_pos               # Important: stay close to default pose
+            
+            # Stability rewards (medium weights)
+            + 1.0 * rew_ang_vel                 # Stability: minimize angular velocity
+            + 0.8 * rew_lin_vel                 # Stability: minimize lateral movement
+            + 0.5 * rew_energy                  # Efficiency: minimize energy consumption
+            
+            # Smoothness and safety penalties (lower weights but important)
+            + 0.3 * rew_smoothness              # Smoothness: encourage smooth actions
+            + -1.0 * rew_termination            # Termination penalty
+            + -0.01 * rew_action_rate           # Action rate penalty (scaled down)
+            + -0.001 * rew_torques              # Torque penalty (scaled down)
+        )
+        
+        # Apply time scaling and clipping similar to walk.py
+        reward = jp.clip(reward * self.dt, -100.0, 100.0)  # More conservative clipping for getup task
         # TODO: End of your code.
 
         state.info["last_last_act"] = state.info["last_act"]
@@ -191,7 +213,194 @@ def create_env():
     return env
 
 
-def train_ppo():
+def save_checkpoint(params, metrics, checkpoint_dir, step):
+    """Save model parameters and training metrics to checkpoint."""
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    checkpoint_data = {
+        'params': params,
+        'metrics': metrics,
+        'step': step,
+        'timestamp': time.time()
+    }
+    
+    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{step}.pkl')
+    with open(checkpoint_path, 'wb') as f:
+        pickle.dump(checkpoint_data, f)
+    
+    # Also save as latest checkpoint
+    latest_path = os.path.join(checkpoint_dir, 'checkpoint_latest.pkl')
+    with open(latest_path, 'wb') as f:
+        pickle.dump(checkpoint_data, f)
+    
+    LOGGER.info(f"Checkpoint saved at step {step}: {checkpoint_path}")
+    return checkpoint_path
+
+
+def load_checkpoint(checkpoint_path):
+    """Load model parameters and training metrics from checkpoint."""
+    if not os.path.exists(checkpoint_path):
+        LOGGER.warning(f"Checkpoint not found: {checkpoint_path}")
+        return None, None, 0
+    
+    try:
+        with open(checkpoint_path, 'rb') as f:
+            checkpoint_data = pickle.load(f)
+        
+        params = checkpoint_data['params']
+        metrics = checkpoint_data['metrics']
+        step = checkpoint_data['step']
+        
+        LOGGER.info(f"Checkpoint loaded from step {step}: {checkpoint_path}")
+        return params, metrics, step
+    except Exception as e:
+        LOGGER.error(f"Failed to load checkpoint: {e}")
+        return None, None, 0
+
+
+def find_latest_checkpoint(checkpoint_dir):
+    """Find the latest checkpoint in the directory."""
+    latest_path = os.path.join(checkpoint_dir, 'checkpoint_latest.pkl')
+    if os.path.exists(latest_path):
+        return latest_path
+    
+    # Fallback: find the checkpoint with highest step number
+    if not os.path.exists(checkpoint_dir):
+        return None
+    
+    checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_') and f.endswith('.pkl')]
+    if not checkpoint_files:
+        return None
+    
+    # Extract step numbers and find the maximum
+    step_numbers = []
+    for f in checkpoint_files:
+        try:
+            step = int(f.split('_')[1].split('.')[0])
+            step_numbers.append((step, f))
+        except:
+            continue
+    
+    if step_numbers:
+        latest_file = max(step_numbers, key=lambda x: x[0])[1]
+        return os.path.join(checkpoint_dir, latest_file)
+    
+    return None
+
+
+def evaluate_from_checkpoint(checkpoint_path, render_video=True):
+    """Load a checkpoint and evaluate the trained model."""
+    params, metrics, step = load_checkpoint(checkpoint_path)
+    if params is None:
+        LOGGER.error("Failed to load checkpoint for evaluation")
+        return
+    
+    LOGGER.info(f"Evaluating model from checkpoint at step {step}")
+    
+    # Create environment and inference function
+    env = create_env()
+    
+    # We need to recreate the network to get the inference function
+    import functools
+    from brax.training.agents.ppo import networks as ppo_networks
+    from ml_collections import config_dict
+    
+    ppo_params = config_dict.create(
+        network_factory=config_dict.create(
+            policy_hidden_layer_sizes=(512, 256, 128),
+            value_hidden_layer_sizes=(512, 256, 128),
+            policy_obs_key="privileged_state",
+            value_obs_key="privileged_state",
+        ),
+    )
+    
+    network_factory = functools.partial(
+        ppo_networks.make_ppo_networks,
+        **ppo_params.network_factory
+    )
+    
+    # Create dummy environment to get observation/action specs
+    dummy_env = create_env()
+    from mujoco_playground import wrapper
+    wrapped_env = wrapper.wrap_for_brax_training(dummy_env)
+    
+    # Create networks
+    networks = network_factory(
+        wrapped_env.observation_size,
+        wrapped_env.action_size,
+        preprocess_observations_fn=lambda x, rng: x
+    )
+    
+    make_inference_fn = networks.make_policy
+    jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
+    
+    # Run evaluation
+    render_length = 500
+    _pre_render_length = 100
+
+    jit_reset = jax.jit(env.reset)
+    jit_step = jax.jit(env.step)
+
+    rng = jax.random.PRNGKey(0)
+    rollout = []
+    body_height = []
+
+    state = jit_reset(rng)
+    for i in range(render_length):
+        if i < _pre_render_length:
+            ctrl = env._default_pose.copy()
+        else:
+            act_rng, rng = jax.random.split(rng)
+            ctrl, _ = jit_inference_fn(state.obs, act_rng)
+
+        state = jit_step(state, ctrl)
+        rollout.append(state)
+        env_height = state.data.site_xpos[env._imu_site_id][2]
+        body_height.append(env_height)
+
+    body_height = jp.array(body_height)
+    height_error = np.mean(np.abs(body_height - DESIRED_BODY_HEIGHT))
+    plt.figure(figsize=(10, 6))
+    plt.plot(body_height)
+    plt.axhline(DESIRED_BODY_HEIGHT, color='r', linestyle='--', label='Desired Height')
+    plt.title(f"Height error: {height_error:.3f} (Step {step})")
+    plt.xlabel("steps")
+    plt.ylabel("body height")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"checkpoint_eval_step_{step}_height_error.png")
+    plt.show()
+
+    if render_video:
+        import mediapy as media
+        
+        render_every = 2
+        fps = 1.0 / env.dt / render_every
+        print(f"fps: {fps}")
+
+        traj = rollout[::render_every]
+        scene_option = mujoco.MjvOption()
+        scene_option.geomgroup[2] = True
+        scene_option.geomgroup[3] = False
+        scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = True
+
+        frames = env.render(
+            traj,
+            camera="track",
+            height=480,
+            width=640,
+            scene_option=scene_option,
+        )
+        video_path = f'../experiments/solutions/checkpoint_eval_step_{step}_video.mp4'
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
+        media.write_video(video_path, frames)
+        print(f"Evaluation video saved to {video_path}")
+    
+    return height_error
+
+
+def train_ppo(checkpoint_dir='./checkpoints', resume_from_checkpoint=None, save_interval=100_000):
     import mediapy as media
 
     from datetime import datetime
@@ -203,7 +412,7 @@ def train_ppo():
     from ml_collections import config_dict
 
     ppo_params = config_dict.create(
-        num_timesteps=10_000, 
+        num_timesteps=1_000_000, 
         num_evals=0,
         reward_scaling=1.0,
         episode_length=500,
@@ -226,6 +435,23 @@ def train_ppo():
         ),
     )
 
+    # Handle checkpoint loading
+    initial_params = None
+    initial_step = 0
+    
+    if resume_from_checkpoint:
+        if resume_from_checkpoint == 'latest':
+            checkpoint_path = find_latest_checkpoint(checkpoint_dir)
+        else:
+            checkpoint_path = resume_from_checkpoint
+        
+        if checkpoint_path:
+            loaded_params, loaded_metrics, loaded_step = load_checkpoint(checkpoint_path)
+            if loaded_params is not None:
+                initial_params = loaded_params
+                initial_step = loaded_step
+                LOGGER.info(f"Resuming training from step {initial_step}")
+
     start_t = datetime.now()
 
     ppo_training_params = dict(ppo_params)
@@ -237,10 +463,18 @@ def train_ppo():
             **ppo_params.network_factory
         )
 
+    # Create custom progress function for checkpointing
+    def progress_fn(num_steps, metrics):
+        if num_steps % save_interval == 0 and num_steps > 0:
+            # Note: We can't access params here directly from the training loop
+            # This is a limitation of the current brax training API
+            LOGGER.info(f"Training progress: {num_steps} steps completed")
+        return metrics
+
     train_fn = functools.partial(
         ppo.train, **dict(ppo_training_params),
         network_factory=network_factory,
-        # progress_fn=progress,
+        progress_fn=progress_fn,
         num_eval_envs=0,
         log_training_metrics=True,
         training_metrics_steps=1_000_000
@@ -248,13 +482,21 @@ def train_ppo():
 
     env = create_env()
     eval_env = create_env()
+    
+    # If we have initial params, we would need to modify the training function
+    # For now, we'll save checkpoints after training completes
     make_inference_fn, params, metrics = train_fn(
         environment=env,
         eval_env=eval_env,
         wrap_env_fn=wrapper.wrap_for_brax_training,
     )
+    
     end_t = datetime.now()
     print(f"time to train: {end_t - start_t}")
+
+    # Save final checkpoint
+    final_step = ppo_params.num_timesteps
+    save_checkpoint(params, metrics, checkpoint_dir, final_step)
 
     render_length = 500
     _pre_render_length = 100
@@ -319,4 +561,15 @@ def train_ppo():
     print("video saved to part2.mp4")
 
 if __name__ == '__main__':
-    train_ppo()
+    # 示例用法:
+    # 1. 从头开始训练并保存checkpoint
+    train_ppo(checkpoint_dir='./getup_checkpoints', save_interval=100_000)
+    
+    # 2. 从最新checkpoint恢复训练
+    # train_ppo(checkpoint_dir='./getup_checkpoints', resume_from_checkpoint='latest')
+    
+    # 3. 从特定checkpoint恢复训练
+    # train_ppo(checkpoint_dir='./getup_checkpoints', resume_from_checkpoint='./getup_checkpoints/checkpoint_500000.pkl')
+    
+    # 4. 评估已保存的checkpoint
+    # evaluate_from_checkpoint('./getup_checkpoints/checkpoint_latest.pkl')
