@@ -183,7 +183,29 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
+
+# VS Code
+.vscode/
+
+# Robotics & Simulation specific
+*.urdf
+*.sdf
+*.world
+**/meshes/
+**/models/
+**/logs/
+**/checkpoints/
+**/saved_models/
+**/tensorboard/
+
+# ISAAC Gym / Gym specific
+**/recordings/
+**/videos/
+
+# PyBullet specific
+*.bullet
+*.xml.bak
 
 # Ruff stuff:
 .ruff_cache/
